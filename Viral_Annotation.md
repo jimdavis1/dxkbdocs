@@ -1,5 +1,5 @@
 # Viral Annotation
-The dxkb mission is to build tools that are intended to accellerate immunogen design.  In order to do this, either at the bench or through the use of advance AI-based modeling it is necessary to have accurate and consistent genome annotations.  For this project, we have developed a simple low-tech viral annotation system that scales well.  It currently covers the  *Paramyxoviridae*, *Bunyavirales*, and *Filoviridae*, and *Pneumoviridae*.  This document is intended to describe how the annotation system currently works. The GitHub repo for this project can be currently found here: https://github.com/jimdavis1/Viral_Annotation.git.
+One of the goals of dxkb is to build tools that can accellerate immunogen design.  In order to do this, either at the bench or through the use of advance AI-based modeling, it is necessary to have accurate and consistent genome annotations.  For this project, we have developed a simple low-tech viral annotation system that scales well.  It currently covers the *Paramyxoviridae*, *Bunyavirales*, *Filoviridae*, and *Pneumoviridae*.  This document is intended to describe how the annotation system currently works. The GitHub repo for this project can be currently found here: https://github.com/jimdavis1/Viral_Annotation.git.
 
 ## Covered viral taxa
 
@@ -40,156 +40,30 @@ Orthopneumovirus muris<br>
 
 ## Step 1.  Calling features based on PSSMs
 
-The code is currently designed to work on the *Paramyxoviridae*, *Bunyavirales*, *Filoviridae*, and *Pneumoviridae* although more taxa are planned.  As depicted in the image below, the program performs a BLASTn against a small set of representative genomes for each genus.  Then it sorts the results by bit score and chooses the best match.<br><br>
+The code is currently designed to work on the *Paramyxoviridae*, *Bunyavirales*, *Filoviridae*, and *Pneumoviridae* although more taxa are planned.  As depicted in the image below, the program performs a BLASTn against a small set of representative genomes for each taxon.  Then it sorts the results by bit score and chooses the best match.<br><br>
 
-For each given taxon, there is a directory of PSSMs corresponding to each known protein for that taxon. The PSSMs are derived from a set of hand curated alignments. In the next step, it cycles through each directory of PSSMs (there may be more than one PSSM per protein), choosing the best tBLASTn match per pssm. <br>
+For each given taxon, there is a directory of PSSMs corresponding to each known protein for that taxon. The PSSMs are derived from a set of hand curated alignments. <br><br>
+
+In the next step, it cycles through each directory of PSSMs (there may be more than one PSSM per protein), choosing the best match using tBLASTn. <br>
 
 Note that it assumes your genome will have the same set of proteins as the nearest match. This is why it is not intended to be used as a discovery tool.  In the event that a new protein is found, a new PSSM must be added to the system.  <br><br>
 
 ![Anno-Strategy](https://github.com/jimdavis1/dxkbdocs/blob/main/flow_chart.jpg)
 
-<br><br>Finally it performs any special rules on the proteins/ORFs.  These rules are currently encoded in a JSON file called `Viral_PSSM.json`. The following is a description of the current JSON strucutre.<br><br>
 
-```
-  "Arenaviridae": {
-    "segments": {
-      "Small RNA Segment": {
-        "max_len": 3741,
-        "min_len": 3061,
-        "replicon_geometry": "linear"
-      },
-      "Large RNA Segment": {
-        "max_len": 8014,
-        "min_len": 6556,
-        "replicon_geometry": "linear"
-      }
-    "features": {
-      "GPC": {
-        "anno": "Pre-glycoprotein polyprotein GP complex (GPC protein)",
-        "bit_cutoff": 100,
-        "copy_num": 1,
-        "coverage_cutoff": 0.65,
-        "downstream_ext": 1,
-        "feature_type": "CDS",
-        "max_len": 617,
-        "min_len": 455,
-        "non_pssm_partner": ["Small Segment Stemloop"],
-        "segment": "Small RNA Segment",
-        "upstream_ext": 1
-      },
-      ...
-```
-
-The Viral_PSSM.json file is in a regular state of development, so this may change slightly, but the above shows an example for, *Arenaviridae*, and a single protein, GPC.  The two highest level keys are `segments`, which contains information on segments that are used for genome quality evaluation ad `features`, which currently contains information on CDS, mat_peptide, and RNA features. <br>
-
-The following is a non-exhaustive description of fields that are used in the JSON<br><br>
-
-`max_len and min_len` maximum or minimum length of a contig or feature that is expected and evaluated by the genome quality checker (not all features or contigs will have this).  The boundaries are currently very crude but effective<br><br>
-
-`replicon_geometry` this is not currently used, but carries info on the genometry of the replicon and inserted into the GTO by the quality tool<br><br>
-
-`copy_num` expected copy number of a feature<br><br>
-
-`coverage_cutoff` blast subject coverage for calling a feature<br><br>
-
-`upstream_ext and downstream_ext` tells the program if it can look upstream for a met start or downstream for a stop codon<br><br>
-
-`feature_type` currently CDS, mat_peptide, or RNA <br><br>
-
-`segment` which segment a feature belongs to (used by the quality tool)<br><br>
-
-`non_pssm_partner` used for placing a location based feature<br><br>
-
-There are other fields that are not depicted in the example, including:<br>
-`PMID` which contains the PubMed ID for one or more DLITS.  A DLIT is an examples of important paper that either defines the function or sequence of a feature. <br><br>
-
-`"special": "transcript_edit"`  This field tells the program that an external program is being used to make a call.  In this case, `transcript_edit` is used to denote a feature that undergoes transcript editing and is found by using `get_transcript_edited_features.pl`.<br><br>
+## Step 2.  Resolving special features
+There are currently two types of special features that the annotation system calls.  The first are location-based features.  These are proteins or RNAs that are called based on location.  The second are transcript-edited features.  Transcript editing is a phenomenon that occurs in the phosphoproteins of the *Paramyxoviridae* and the glycoproteins of the *Filoviridae*.  It occurs when the RNA-dependent RNA polymerase encounters a region of low complexity and pauses.  The pause allows for the insertion of one or more new nucleotides into the transcript, which causes a frame shift. Thus, the amino acid sequence is not a direct translation of what is encoded in the genome.  We solve this problem by hand-curating a set of transcripts in their post-editing state. We then BLAST these against the contig, and for BLASTn matches with high enough scores and no additional gaps, the alignment gap is filled in using the nucleotide sequence of closest curated transcript.<br>
 
 
-## Get Transcript Edited Features
-Transcript editing is a phenomenon that occurs in the phosphoproteins of the Paramyxoviridae and the glycoproteins of the Filoviridae.  It occurs when the RNA-Dependent RNA polymerase encounters a region of low complexity and pauses.  The pause allows for the insertion of one or more new nucleotides into the transcript, which causes a frame shift. Thus, the amino acid sequence is not a direct translation of what is encoded in the genome.  We solve this problem by hand-curating a set of transcripts in their post-editing state. These are found in the `Transcript-Editing` directory.  We then BLAST these against the the contig, and for BLASTn matches with high enough scores, the alignment gap is filled in using the nucleotide sequence of closest curated transcript.  Currently in order to do this, the following strict BLASTn criteria must be met: <br>
 
-1.  The match must have >= 95% nucleotide identity
-2.  The match must have >= 95% query coverage
-3.  The match must have <= 2 gap characters in the subject
-4.  The gap characters must occur consecutively in a run <br><br>
+## Step 3.  Assessing genome quality 
+Genome quality is assessed by computing:<br>
 
-These parameters are controlled using `--id`, `--cov`, and `--gaps` options, respectively.  The requirement for consecutive gap characters is hard-coded.
-<br><br>
+1.  The number of ambiguous bases per contig
+2.  The number of segments versus what is expected 
+3.  The length of each segment versus what is expected
+3.  The number of occurrences of each non-variable feature versus what is expected
+4.  The length of each non-variable feature versus what is expected<br><br>
 
-Because we may encounter a decent BLASTn match, but not have sufficient %identity, %query coverage, or there may be additional naturally-occurring gaps in the subject, this program will call a feature covering the BLASTn match when the above inclusion criteria are not met.  However, it will not attempt to correct the subject sequence.  Instead it will call a `partial_cds` feature and will not attempt a translation.  Parameters setting the minimum BLAST requirements for this type of feature call are `--eval`, `--lower_pid`, and `--lower_pcov`, which set the maximum BLAST e-value, and the minimum percent identity, and query coverage for consideration. <br><br>
+Each segment is defined based on the proteins that it should encode.  Expected segment and feature lengths are defined empirically based on what has been seen before in that taxon.  Note that it is possible for a rare, but high quality, genome to deviate from expectation in terms of genome organization, segment length, or feature length, and could be assigned a "poor" genome quality.  In cases where segmented viruses have uncharacterized or variable gene content in their smaller segments, such as Fimoviridae, these smaller segments are not accounted for by the quality checker.  
 
-Full usage for this program is as follows:
-
-
-```	--input STR (or -i)    Input GTO
-	--output STR (or -o)   Output GTO
-	--cov INT (or -c)      Minimum BLASTn percent query coverage (D = 95)
-	--id INT (or -p)       Minimum BLASTn percent identity  (D = 95)
-	--gaps INT (or -g)     Maximum number of allowable gaps (D = 2)
-	--e_val NUM (or -e)    Maximum BLASTn evalue for considering any HSP
-	                       (D = 0.5)
-	--lower_pid            Lower percent identity threshold for a feature
-	                       call without transcript editing correction (D
-	                       = 80)
-	                       aka --lpi
-	--lower_pcov           Lower percent query coverage for for a feature
-	                       call without transcritp editing correction (D
-	                       = 80)
-	                       aka --lpi
-	--threads INT (or -a)  Threads for the BLASTN (D = 24))
-	--json STR (or -j)     Full path to the JSON opts file
-	--dir STR (or -d)      Full path to the directory hand curated
-	                       transcripts
-	--tmp STR (or -t)      Declare name for temp dir (D = randomly named
-	                       in cwd)
-	--help (or -h)         Show this help message
-	--debug (or -b)        Enable debugging
-```
-
-## Genome Quality Tool
-As described above, the JSON file that contains information about the features also contains information about copy number of features and contigs.  The quality tool assess the the following things:<br>
-
-1.  The number of ambigous bases per contig
-2.  The number of expected segments 
-3.  The length of each segment relative to what is expected
-3.  The number of expected occurrences of each non-variable feature
-4.  The legnth of each non-variable feature<br><br>
-
-Currently, the tool mostly looks for CDS features, but it looks for some mat_peptides in the Filoviridae. 
-
-The output is two tables: one is a contig report and the other is a feature report.  If any given contig or feature causes the genome quality to be "poor" the reason for the call is provided.  
-
-Usage statement for the tool:
-```viral_genome_quality.pl [-ahijop] [long options...]
-	--ambiguous NUM (or -a)  Fraction of ambiguous bases, (Default = 0.01)
-	--input STR (or -i)      Input GTO
-	--output STR (or -o)     Output GTO
-	--prefix STR (or -p)     Genome Quality File Prefix
-	--json STR (or -j)       Full path to the JSON opts file
-	--help (or -h)           Show this help message
-```
-
-## General notes on the curation and development of PSSMs
-### Paramyxoviridae
-
-I have recently updated the way transcript-edited features are called by adding `get_transcript_edited_features.pl`.  This is up-to-date and evaluated for the glycoproteins of Ebola, and the phosphoproteins in the Paramyxos.  They were originally called by splicing two BLAST HSPs, which turned out to be problematic in a few cases. DLITs that either describe the editing site, or the subsequent amino acid sequence for the transcript-edited proteins have been added to the json.  There are a handful, like Narmovirus, where I do not think protein work has been done to prove V and W, but the predicted editing site is supported by literature. At this point, all editing sites are backstopped by literature references. <br>
-
-### Respirovirus
-Note that in the respiroviruses, there is a nomenclature discrepancy regarding whether the third phosphoprotein (+2 G) is called W or D.  Currently these are all called W by the system and I have not enountered a compelling reason (other than the historical naming) to maintain the distinction between W and D.
-
-### Tospoviridae:
-I was unable to find any acceptable publications that unambiguously define the coordinates of Gn and Gc.<br>
-
-### Fimoviridae:
-I also could not find any publications clearly showing Gn and Gc.<br>
-
-The Fimoviridae are the most poorly characterized family that I have encountered so far.  They are  multi-segmented and variable in their smaller segments. Proteins from these segments including P5, 6, 6a, 6b, 7, and 27 are all essentially uncharacterized.  They are numbered based on appearance in the genome in which they are described, but their ordering may or may not hold up as more are sequenced.  Furthermore, the proteins that have been called P5 and P6 have little to no similarity amongst themselves (usually < 35% identity) and could all have different functions in their own right.  I chose to split these into individual sets of pssms with the annotation "Fimoviridae uncharacterized protein."  We can hang an annotation on each when we learn what it does.  It is worth noting that due to the infrequency of these proteins, there are many low-occurrence uncharacterized proteins that did not get PSSMs and are not getting called.   The "P5" protein of Raspberry leaf blotch emaravirus is a good example here (fig|1980431.35.CDS.1).<br> 
-
-In this family the quality checker will look for Segments 1-4 only, which correspond to the individual proteins L, GPC, N, and MOV, respectively.  Their segment lengths are highly variable, so the lenght cutoffs for segments 1-4 are based on the the lower length limit of the corresponding protein, and (the longest allowable gene + 0.5 X longest allowable gene) (this is arbitrary and could  be tuned).<br>
-
-## Phasmaviridae
-These are mostly insect virueses.  The set of genomes is highly diverse,with few representatives in each genus, so the pssms only represent a fraction of the true diversity.  There were a considerable number of proteins that I could not get to cluster at 50% identity. I am currently dissatisfied with this family, so as more exemplars come in, this set should eventually get recomputed. 
-
-## Pneumoviridae
-The cleaved forms of the fusion glycoprotein differ between ortho- and metapneumoviride.  All of the orthos, except murine and close relatives, have a p27 peptide that is a real protein. This necessitated the insertion of three taxon-level directories (ortho, meta, and murine orthos).  I kept the orginal all-pneumo alignment directory which has everything and has seprate subdirectories for the mature F proteins.   The pssm directories for the three taxa contain the pssms that I had originally built for all pneumos. This means that there are a few extra pssms that won't match and can be cleaned up later.    
