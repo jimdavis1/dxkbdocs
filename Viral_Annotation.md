@@ -46,7 +46,7 @@ For each given taxon, there is a directory of PSSMs corresponding to each known 
 
 Note that it assumes your genome will have the same set of proteins as the nearest match. This is why it is not intended to be used as a discovery tool.  In the event that a new protein is found, a new PSSM must be added to the system.  <br><br>
 
-![Anno-Strategy](https://github.com/jimdavis1/Viral_Annotation/assets/7661533/0d6a3a44-47af-40bf-852d-5ddda250ad94)
+![Anno-Strategy](https://github.com/jimdavis1/dxkbdocs/blob/main/flow_chart.jpg)
 
 <br><br>Finally it performs any special rules on the proteins/ORFs.  These rules are currently encoded in a JSON file called `Viral_PSSM.json`. The following is a description of the current JSON strucutre.<br><br>
 
